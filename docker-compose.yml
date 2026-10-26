@@ -1,0 +1,86 @@
+# Citadel — local workstation stack
+# Start:  make up      Stop: make down      Logs: make logs
+#
+# Ollama is NOT in here on purpose: it runs on the host so it can use
+# your GPU directly. Containers reach it at host.docker.internal:11434.
+
+name: citadel
+
+services:
+  omniroute:
+    # Pin a version tag (e.g. diegosouzapw/omniroute:3.8.51) once it works.
+    image: diegosouzapw/omniroute:latest
+    container_name: citadel-omniroute
+    restart: unless-stopped
+    stop_grace_period: 40s
+    ports:
+      - "127.0.0.1:20128:20128"   # dashboard: http://localhost:20128/dashboard
+    environment:
+      PORT: "20128"
+      HOSTNAME: "0.0.0.0"
+      DATA_DIR: /app/data
+      NEXT_PUBLIC_BASE_URL: http://localhost:20128
+      JWT_SECRET: ${OMNIROUTE_JWT_SECRET}
+      API_KEY_SECRET: ${OMNIROUTE_API_KEY_SECRET}
+      INITIAL_PASSWORD: ${OMNIROUTE_INITIAL_PASSWORD}
+    volumes:
+      - omniroute-data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # so OmniRoute can reach Ollama too
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: citadel-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    # Used from Phase 3 for the job queue and per-provider rate limits.
+    image: redis:7-alpine
+    container_name: citadel-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  orchestrator:
+    build: ./orchestrator
+    container_name: citadel-orchestrator
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${ORCH_BIND:-127.0.0.1}:8000:8000"
+    volumes:
+      - ./runs:/app/runs
+      - ./orchestrator/app:/app/app   # live code reload while you build
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      omniroute:
+        condition: service_started
+
+volumes:
+  omniroute-data:
+  pg-data:
+  redis-data:

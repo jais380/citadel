@@ -1,0 +1,9 @@
+.env
+infra/vps/.env
+runs/*
+!runs/.gitkeep
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+node_modules/

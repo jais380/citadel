@@ -1,0 +1,22 @@
+{
+	email {$ACME_EMAIL}
+}
+
+# Portfolio
+{$DOMAIN} {
+	root * /srv/site
+	encode zstd gzip
+	try_files {path} {path}/ /index.html
+	file_server
+}
+
+# n8n
+n8n.{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy n8n:5678
+}
+
+# Hosted tools / MCP servers (Phase 4). Replace with reverse_proxy lines as you add services.
+tools.{$DOMAIN} {
+	respond "Citadel tools: coming in Phase 4" 200
+}
